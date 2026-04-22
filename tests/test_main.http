@@ -1,0 +1,19 @@
+# Test your FastAPI endpoints
+
+GET http://127.0.0.1:8000/
+Accept: application/json
+
+###
+
+# POST a video file for VSR inference
+POST http://127.0.0.1:8000/vsr/process
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="sample.mp4"
+Content-Type: video/mp4
+
+< ./sample.mp4
+--boundary--
+
+###

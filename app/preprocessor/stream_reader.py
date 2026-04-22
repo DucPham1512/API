@@ -1,0 +1,90 @@
+import time
+from dataclasses import dataclass
+from typing import Generator, Tuple, Union
+
+import cv2
+import numpy as np
+
+
+@dataclass
+class FrameMetadata:
+    frame_id: int
+    timestamp_ms: float
+    source_fps: float
+
+
+class VideoStreamReader:
+    """Reads frames from a video file or camera device at a fixed target FPS.
+
+    Args:
+        source:     Camera index (int) or video file path (str). Default: 0 (built-in webcam).
+        target_fps: Target frame rate to enforce.
+    """
+
+    def __init__(self, source: Union[int, str] = 0, target_fps: float = 25.0):
+        self.source = source
+        self.target_fps = target_fps
+        self._cap: cv2.VideoCapture = None
+
+    def __enter__(self):
+        self._cap = self._open()
+        if not self._cap.isOpened():
+            raise IOError(
+                f"Cannot open video source: {self.source!r}\n"
+                "Check that the webcam hardware switch is on and no other app is using the camera."
+            )
+        return self
+
+    def _open(self) -> cv2.VideoCapture:
+        # Try MSMF first for integer indices — avoids triggering NVIDIA Broadcast DSH errors.
+        # Fall back to DSHOW, then let OpenCV choose.
+        if isinstance(self.source, int):
+            for backend in (cv2.CAP_MSMF, cv2.CAP_DSHOW, cv2.CAP_ANY):
+                cap = cv2.VideoCapture(self.source, backend)
+                if cap.isOpened():
+                    return cap
+                cap.release()
+
+        # File path: let OpenCV choose the best backend
+        return cv2.VideoCapture(self.source)
+
+    def __exit__(self, *_):
+        if self._cap is not None:
+            self._cap.release()
+
+    def stream(self) -> Generator[Tuple[np.ndarray, FrameMetadata], None, None]:
+        """Yield (frame_bgr, FrameMetadata) at target_fps.
+
+        Drops frames when the source is faster than target_fps.
+        If the source is slower, processes at source rate without duplication.
+        """
+        if self._cap is None:
+            raise RuntimeError("Use VideoStreamReader as a context manager.")
+
+        source_fps = self._cap.get(cv2.CAP_PROP_FPS) or self.target_fps
+        frame_interval = 1.0 / self.target_fps
+
+        frame_id = 0
+        last_yield_time = time.perf_counter()
+
+        while True:
+            ret, frame = self._cap.read()
+            if not ret:
+                break
+
+            now = time.perf_counter()
+            elapsed = now - last_yield_time
+
+            if elapsed < frame_interval:
+                continue
+
+            timestamp_ms = self._cap.get(cv2.CAP_PROP_POS_MSEC)
+            meta = FrameMetadata(
+                frame_id=frame_id,
+                timestamp_ms=timestamp_ms,
+                source_fps=source_fps,
+            )
+            yield frame, meta
+
+            frame_id += 1
+            last_yield_time = time.perf_counter()
