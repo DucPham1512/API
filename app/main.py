@@ -38,3 +38,8 @@ async def process_video(file: UploadFile = File(...)):
 
     predictions = [inferencer.predict(t).flatten().tolist() for t in tensors]
     return PredictionResponse(predictions=predictions)
+
+@app.get("/vsr/transcript")
+async def get_transcript():
+    # Placeholder for transcript retrieval logic
+    return {"message": "Transcript retrieval started"}
