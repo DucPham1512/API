@@ -15,6 +15,7 @@ WebSocket protocol (server → client):
   - Text message  <StreamSegment JSON, is_final=true>     — last message, signals completion
 """
 
+import asyncio
 import json
 import os
 import tempfile
@@ -23,6 +24,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 
 from app.interface.schemas import StreamSegment, TranscriptResponse
+from app.pipeline import VSRPipeline
 
 router = APIRouter(prefix="/vsr", tags=["VSR"])
 
@@ -43,7 +45,8 @@ async def process_file(file: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        segments = _run_file_pipeline(tmp_path)
+        pipeline = VSRPipeline.get()
+        segments = await asyncio.to_thread(pipeline.process_file, tmp_path)
     finally:
         os.unlink(tmp_path)
 
@@ -61,14 +64,14 @@ async def stream_video(websocket: WebSocket):
     complete (sent after the client sends {"type": "end"}).
     """
     await websocket.accept()
-    processor = _StreamProcessor()
+    processor = VSRPipeline.get().make_stream_processor()
 
     try:
         while True:
             message = await websocket.receive()
 
             if "bytes" in message and message["bytes"]:
-                segments = processor.push_frame(message["bytes"])
+                segments = await asyncio.to_thread(processor.push_frame, message["bytes"])
                 for seg in segments:
                     await websocket.send_text(seg.model_dump_json())
 
@@ -80,7 +83,7 @@ async def stream_video(websocket: WebSocket):
                     processor.configure(fps=data.get("fps", 25.0))
 
                 elif msg_type == "end":
-                    final_segments = processor.flush()
+                    final_segments = await asyncio.to_thread(processor.flush)
                     for seg in final_segments:
                         await websocket.send_text(seg.model_dump_json())
                     sentinel = StreamSegment(text="", start_ms=0, end_ms=0, is_final=True)
@@ -89,39 +92,5 @@ async def stream_video(websocket: WebSocket):
 
     except WebSocketDisconnect:
         pass
-
-
-# ---------------------------------------------------------------------------
-# Stubs — replaced in the next phase when the processing pipeline is wired in
-# ---------------------------------------------------------------------------
-
-def _run_file_pipeline(video_path: str) -> list:
-    """Process an MP4 file and return a list of TranscriptSegment objects.
-
-    Stub: replace with real pipeline + decoder logic.
-    """
-    from app.interface.schemas import TranscriptSegment
-    return [TranscriptSegment(text="[pipeline not yet connected]", start_ms=0.0, end_ms=0.0)]
-
-
-class _StreamProcessor:
-    """Stateful per-connection stream processor.
-
-    Stub: replace with real frame buffering + pipeline + decoder logic.
-    """
-
-    def __init__(self):
-        self._fps: float = 25.0
-        self._frame_count: int = 0
-
-    def configure(self, fps: float):
-        self._fps = fps
-
-    def push_frame(self, jpeg_bytes: bytes) -> list[StreamSegment]:
-        self._frame_count += 1
-        # TODO: decode JPEG, run through pipeline window, decode logits → text
-        return []
-
-    def flush(self) -> list[StreamSegment]:
-        # TODO: flush remaining frames in the pipeline buffer
-        return []
+    finally:
+        processor.close()

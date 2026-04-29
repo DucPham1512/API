@@ -55,36 +55,38 @@ class VideoStreamReader:
     def stream(self) -> Generator[Tuple[np.ndarray, FrameMetadata], None, None]:
         """Yield (frame_bgr, FrameMetadata) at target_fps.
 
-        Drops frames when the source is faster than target_fps.
-        If the source is slower, processes at source rate without duplication.
+        For video files: samples by video timestamp — works at any read speed.
+        For cameras:     samples by wall-clock time — throttles live input.
         """
         if self._cap is None:
             raise RuntimeError("Use VideoStreamReader as a context manager.")
 
         source_fps = self._cap.get(cv2.CAP_PROP_FPS) or self.target_fps
-        frame_interval = 1.0 / self.target_fps
+        frame_interval_s = 1.0 / self.target_fps
+        is_file = not isinstance(self.source, int)
 
         frame_id = 0
-        last_yield_time = time.perf_counter()
+        last_yield_s = float("-inf")
 
         while True:
             ret, frame = self._cap.read()
             if not ret:
                 break
 
-            now = time.perf_counter()
-            elapsed = now - last_yield_time
+            if is_file:
+                current_s = self._cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+            else:
+                current_s = time.perf_counter()
 
-            if elapsed < frame_interval:
+            if current_s - last_yield_s < frame_interval_s:
                 continue
 
             timestamp_ms = self._cap.get(cv2.CAP_PROP_POS_MSEC)
-            meta = FrameMetadata(
+            yield frame, FrameMetadata(
                 frame_id=frame_id,
                 timestamp_ms=timestamp_ms,
                 source_fps=source_fps,
             )
-            yield frame, meta
 
             frame_id += 1
-            last_yield_time = time.perf_counter()
+            last_yield_s = current_s

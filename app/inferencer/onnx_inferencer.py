@@ -27,8 +27,9 @@ class OnnxInferencer:
             tensor: float32 array of shape (T, H, W, C) produced by the preprocessor.
 
         Returns:
-            Model output array.
+            log-probability array of shape (1, T', vocab_size).
         """
-        batch = tensor[np.newaxis]  # (1, T, H, W, C)
+        # (T, H, W, C) → (1, C, T, H, W)  required by Conv3dResNet
+        batch = tensor.transpose(3, 0, 1, 2)[np.newaxis].astype(np.float32)
         outputs = self._session.run([self._output_name], {self._input_name: batch})
         return outputs[0]
