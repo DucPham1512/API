@@ -1,7 +1,16 @@
-fastapi
-uvicorn[standard]
-onnxruntime
-opencv-python
-numpy
-dlib
-mediapipe
+# API server
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+
+# Inference
+onnxruntime==1.23.2
+
+# Preprocessing
+opencv-python==4.9.0.80
+numpy==1.26.4
+mediapipe==0.10.35
+dlib==20.0.1
+
+# Test client
+websockets==16.0
+PyQt6==6.11.0
