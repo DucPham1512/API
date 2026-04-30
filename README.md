@@ -6,7 +6,14 @@ Visual Speech Recognition API — streams webcam frames over WebSocket and retur
 
 - Python 3.10+
 - A working webcam
-- `libGL` / display server (needed by OpenCV and PyQt6 on Linux)
+
+**Linux** — also needs `libGL` and a display server (X11 or Wayland) for OpenCV and PyQt6:
+
+```bash
+sudo apt install libgl1 libglib2.0-0
+```
+
+**Windows** — PyQt6 and OpenCV bundle everything they need; no extra system packages required.
 
 ## Install
 
@@ -14,18 +21,19 @@ Visual Speech Recognition API — streams webcam frames over WebSocket and retur
 pip install -r requirements.txt
 ```
 
-> **dlib** compiles from source on most systems. You need `cmake` and a C++ compiler:
-> ```bash
-> # Ubuntu / Debian
-> sudo apt install cmake build-essential
-> # macOS
-> brew install cmake
-> ```
+`dlib` compiles from source on all platforms. Install the build tools first:
+
+| Platform | Command |
+|----------|---------|
+| Ubuntu / Debian | `sudo apt install cmake build-essential` |
+| macOS | `brew install cmake` |
+| Windows | Install [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and [CMake](https://cmake.org/download/), then add CMake to `PATH` |
 
 ## Download the face landmark model
 
 The MediaPipe face landmarker model (~30 MB) is downloaded automatically on first run. To pre-fetch it manually:
 
+**Linux / macOS**
 ```bash
 python - <<'EOF'
 from app.preprocessor.face_localizer import download_model
@@ -33,18 +41,35 @@ download_model()
 EOF
 ```
 
-The file is saved to `~/.cache/mediapipe/face_landmarker.task`.
+**Windows (Command Prompt)**
+```cmd
+python -c "from app.preprocessor.face_localizer import download_model; download_model()"
+```
+
+The file is saved to `~/.cache/mediapipe/face_landmarker.task` (Linux/macOS) or `%USERPROFILE%\.cache\mediapipe\face_landmarker.task` (Windows).
 
 ## Run the API server
 
+**Linux / macOS**
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+**Windows**
+```cmd
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
 ## Run the webcam stream test client
 
+**Linux / macOS**
 ```bash
 python tests/ws_stream_test.py
+```
+
+**Windows**
+```cmd
+python tests\ws_stream_test.py
 ```
 
 Options:
